@@ -5,7 +5,7 @@
 // Packet Structure
 struct RadioPacket {
   uint16_t data;      
-  uint8_t  checksum;  
+  uint16_t  checksum;  
 };
 
 // Bit Definitions
@@ -17,15 +17,17 @@ const uint16_t MASK_FULL   = 0x0200; // Bit 9   (Feedback)
 // Frequency
 const long LORA_FREQUENCY = 915E6; 
 
-// CRC-8 Implementation
-uint8_t calculateCRC(const uint8_t *data, size_t len) {
-  uint8_t crc = 0x00;
+// CRC-16 Implementation
+uint16_t calculateCRC(const uint8_t *data, size_t len) {
+  uint16_t crc = 0x0000;   // Initial value (common for CRC-16-IBM)
   while (len--) {
     uint8_t extract = *data++;
     for (uint8_t tempI = 8; tempI; tempI--) {
-      uint8_t sum = (crc ^ extract) & 0x01;
+      uint16_t sum = (crc ^ extract) & 0x0001;
       crc >>= 1;
-      if (sum) crc ^= 0x8C;
+      if (sum) {
+        crc ^= 0xA001;    // CRC-16-IBM polynomial
+      };
       extract >>= 1;
     }
   }
@@ -34,38 +36,35 @@ uint8_t calculateCRC(const uint8_t *data, size_t len) {
 
 
 // --- RANGE BOX CODE ---
-// [Include Shared Settings Here]
 
 // --- PIN DEFINITIONS ---
-// Switches 1-4 (Analog pins used as Digital) 
-const int PIN_SW1 = A0; 
-const int PIN_SW2 = A1; 
-const int PIN_SW3 = A2; 
-const int PIN_SW4 = A3; 
-
-// Switches 5-8 (Digital Pins) 
-const int PIN_SW5 = 4;  
-const int PIN_SW6 = 5;  
-const int PIN_SW7 = 6;  
-const int PIN_SW8 = 7;  // KILL SWITCH (Switch 8)
+// Switches 1-8
+const int PIN_SW1 = 19; // D14/A0
+const int PIN_SW2 = 20; // D15/A1
+const int PIN_SW3 = 21; // D16/A2
+const int PIN_SW4 = 22; // D17/A3 
+const int PIN_SW5 = 7; // D4
+const int PIN_SW6 = 8; // D5
+const int PIN_SW7 = 9; // D6
+const int PIN_SW8 = 10; // D7
 
 // LEDs 
-const int PIN_LED_DESYNC = 2; // D2 (LED 1)
-const int PIN_LED_STALL  = 1; // D1 (LED 2) - SERIAL TX PIN (Serial Disabled)
-const int PIN_LED_FULL   = 0; // D0 (LED 3) - SERIAL RX PIN (Serial Disabled)
+const int PIN_LED1_DESYNC = 5; // D2 (LED 1)
+const int PIN_LED2_STALL  = 1; // D1 (LED 2)
+const int PIN_LED3_FULL   = 2; // D0 (LED 3)
 
 // LoRa Pins 
-const int LORA_CS  = 10;
-const int LORA_RST = 9;
-const int LORA_IRQ = 3; // D3
+const int PIN_LORA_CS  = 13; // D10
+const int PIN_LORA_RST = 12; // D9
+const int PIN_LORA_G0 = 6; // D3
 
 // --- CONFIGURATION ---
-const int TIMEOUT_MS = 50;
+const int TIMEOUT = 50;
 const int MAX_MISSED_ACKS = 5;
 int missedAckCount = 0;
 
 void setup() {
-  // Serial.begin(9600); // DISABLED to allow LEDs on D0/D1 to work
+  Serial.begin(9600);
   
   // Setup Switch Inputs
   pinMode(PIN_SW1, INPUT_PULLUP); pinMode(PIN_SW2, INPUT_PULLUP);
@@ -74,14 +73,13 @@ void setup() {
   pinMode(PIN_SW7, INPUT_PULLUP); pinMode(PIN_SW8, INPUT_PULLUP);
 
   // Setup LED Outputs
-  pinMode(PIN_LED_DESYNC, OUTPUT);
-  pinMode(PIN_LED_STALL,  OUTPUT);
-  pinMode(PIN_LED_FULL,   OUTPUT);
+  pinMode(PIN_LED1_DESYNC, OUTPUT);
+  pinMode(PIN_LED2_STALL,  OUTPUT);
+  pinMode(PIN_LED3_FULL,   OUTPUT);
 
   // Initialize LoRa
-  LoRa.setPins(LORA_CS, LORA_RST, LORA_IRQ);
+  LoRa.setPins(PIN_LORA_CS, PIN_LORA_RST, PIN_LORA_G0);
   if (!LoRa.begin(LORA_FREQUENCY)) {
-    // Error: Fast blink LED 1 forever
     while(1) {
       digitalWrite(PIN_LED_DESYNC, HIGH); delay(100);
       digitalWrite(PIN_LED_DESYNC, LOW); delay(100);
@@ -117,7 +115,7 @@ void loop() {
   bool responseReceived = false;
   unsigned long waitStart = millis();
 
-  while (millis() - waitStart < TIMEOUT_MS) {
+  while (millis() - waitStart < TIMEOUT) {
     int packetSize = LoRa.parsePacket();
     if (packetSize == sizeof(RadioPacket)) {
       RadioPacket rxPacket;
@@ -146,4 +144,5 @@ void loop() {
   }
   
   delay(10); 
+
 }
